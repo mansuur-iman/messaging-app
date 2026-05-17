@@ -1,9 +1,27 @@
 import { prisma } from "../../lib/prisma.js";
 import { Request, Response, NextFunction } from "express";
 import { updateProfileSchema } from "../validations/auth.js";
+import { paginateUsers } from "../services/userService.js";
 
-const getUsers = async (req: Request, res: Response, next: NextFunction) => {
+type paginationQuery = {
+  page: string;
+  limit: string;
+};
+
+const getUsers = async (
+  req: Request,
+  {},
+  {},
+  pagination: paginationQuery,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
+    const { skip, limit, page } = paginateUsers(
+      parseInt(pagination.page) || 1,
+      parseInt(pagination.limit) || 20,
+    );
+
     const users = await prisma.user.findMany({
       select: {
         id: true,
@@ -14,6 +32,8 @@ const getUsers = async (req: Request, res: Response, next: NextFunction) => {
       orderBy: {
         username: "asc",
       },
+      skip,
+      take: limit,
     });
     res.status(200).json(users);
   } catch (error) {
@@ -25,6 +45,9 @@ const getUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
+    if (!id || Array.isArray(id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
