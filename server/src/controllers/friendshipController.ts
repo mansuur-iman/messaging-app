@@ -222,9 +222,48 @@ const getFriendsList = async (
   }
 };
 
+const rejectFriendRequest = async (
+  req: Request<{ requestId: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const friendship = await prisma.friendship.findUnique({
+      where: { id: requestId },
+    });
+
+    if (!friendship || friendship.friendId !== userId) {
+      return res.status(404).json({ message: "Friend request not found" });
+    }
+
+    if (friendship.status !== "PENDING") {
+      return res.status(400).json({ message: "Invalid friend request" });
+    }
+
+    await prisma.friendship.update({
+      where: { id: requestId },
+      data: { status: "REJECTED" },
+    });
+
+    return res
+      .status(200)
+      .json({ message: "Friend request rejected successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   sendFriendRequest,
   getPendingFriendRequests,
   acceptFriendRequest,
   getFriendsList,
+  rejectFriendRequest,
 };
