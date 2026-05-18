@@ -9,9 +9,11 @@ import {
 } from "../controllers/friendshipController.js";
 
 const router = Router();
-router.get("/", authenticateToken, getFriendsList);
 router.get("/pending", authenticateToken, getPendingFriendRequests);
+router.get("/", authenticateToken, getFriendsList);
+
 router.post("/request/:userId", authenticateToken, sendFriendRequest);
+
 router.put("/accept/:requestId", authenticateToken, acceptFriendRequest);
 router.put("/reject/:requestId", authenticateToken, rejectFriendRequest);
 

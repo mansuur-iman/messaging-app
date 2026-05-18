@@ -3,6 +3,8 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/user.js";
+import messageRoutes from "./routes/message.js";
+import friendshipRoutes from "./routes/friendship.js";
 
 const app = express();
 const PORT = process.env.PORT;
@@ -15,6 +17,8 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
+app.use("/api/friendships", friendshipRoutes);
 
 // Error handler — must have 4 parameters for Express to recognize it
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
