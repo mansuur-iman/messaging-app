@@ -42,8 +42,7 @@ model Message {
   receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id])
 
   @@index([senderId, receiverId])
-  @@unique([receiverId,read])
-  
+  @@index([receiverId, read])
 }
 
 enum FriendshipStatus {

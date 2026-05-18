@@ -1,4 +1,4 @@
-export const paginateUsers = (page: number, limit: number) => {
+export const paginate = (page: number, limit: number) => {
   const safePage = Math.max(1, page);
 
   // minimum 1, maximum 50

@@ -1,53 +1,61 @@
 import { prisma } from "../../lib/prisma.js";
 import { Request, Response, NextFunction } from "express";
 import { updateProfileSchema } from "../validations/auth.js";
-import { paginateUsers } from "../services/userService.js";
+import { paginate } from "../services/userService.js";
 
-type paginationQuery = {
-  page: string;
-  limit: string;
+type PaginationQuery = {
+  page?: string;
+  limit?: string;
 };
 
 const getUsers = async (
-  req: Request,
-  {},
-  {},
-  pagination: paginationQuery,
+  req: Request<{}, {}, {}, PaginationQuery>,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    const { skip, limit, page } = paginateUsers(
-      parseInt(pagination.page) || 1,
-      parseInt(pagination.limit) || 20,
+    const { page, limit } = req.query;
+
+    const { skip, limit: take } = paginate(
+      parseInt(page || "1"),
+      parseInt(limit || "20"),
     );
 
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        username: true,
-        avatar: true,
-        bio: true,
-      },
-      orderBy: {
-        username: "asc",
-      },
-      skip,
-      take: limit,
+    const [users, total] = await prisma.$transaction([
+      prisma.user.findMany({
+        select: {
+          id: true,
+          username: true,
+          avatar: true,
+          bio: true,
+        },
+        orderBy: {
+          username: "asc",
+        },
+        skip,
+        take,
+      }),
+      prisma.user.count(),
+    ]);
+
+    res.status(200).json({
+      users,
+      total,
+      page: parseInt(page || "1"),
     });
-    res.status(200).json(users);
   } catch (error) {
     next(error);
   }
 };
 
-const getUser = async (req: Request, res: Response, next: NextFunction) => {
+const getUser = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const { id } = req.params;
 
-    if (!id || Array.isArray(id)) {
-      return res.status(400).json({ message: "Invalid user ID" });
-    }
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -55,7 +63,6 @@ const getUser = async (req: Request, res: Response, next: NextFunction) => {
         username: true,
         avatar: true,
         bio: true,
-        // don't expose email on public profile
       },
     });
 
@@ -76,7 +83,7 @@ const getMe = async (req: Request, res: Response, next: NextFunction) => {
       select: {
         id: true,
         username: true,
-        email: true, // only you can see your own email
+        email: true,
         avatar: true,
         bio: true,
         createdAt: true,
@@ -93,7 +100,11 @@ const getMe = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
-const updateUser = async (req: Request, res: Response, next: NextFunction) => {
+const updateUser = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const { id } = req.params;
 
@@ -102,19 +113,24 @@ const updateUser = async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const parsed = updateProfileSchema.safeParse(req.body);
+
     if (!parsed.success) {
-      return res
-        .status(400)
-        .json({ errors: parsed.error.flatten().fieldErrors });
+      return res.status(400).json({
+        errors: parsed.error.flatten().fieldErrors,
+      });
     }
 
-    // check if username is taken by someone else
     if (parsed.data.username) {
       const existing = await prisma.user.findUnique({
-        where: { username: parsed.data.username },
+        where: {
+          username: parsed.data.username,
+        },
       });
+
       if (existing && existing.id !== id) {
-        return res.status(400).json({ message: "Username already taken" });
+        return res.status(400).json({
+          message: "Username already taken",
+        });
       }
     }
 
@@ -130,28 +146,45 @@ const updateUser = async (req: Request, res: Response, next: NextFunction) => {
       },
     });
 
-    res
-      .status(200)
-      .json({ message: "Profile updated successfully", user: updatedUser });
+    res.status(200).json({
+      message: "Profile updated successfully",
+      user: updatedUser,
+    });
   } catch (error) {
     next(error);
   }
 };
 
-const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
+const deleteUser = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) => {
   try {
     const { id } = req.params;
 
     if (req.user?.userId !== id) {
-      return res.status(403).json({ message: "Unauthorized" });
+      return res.status(403).json({
+        message: "Unauthorized",
+      });
     }
 
-    await prisma.user.delete({ where: { id } });
+    await prisma.user.delete({
+      where: { id },
+    });
 
-    res.status(200).json({ message: "Account deleted successfully" });
+    res.status(200).json({
+      message: "Account deleted successfully",
+    });
   } catch (error) {
     next(error);
   }
 };
 
-export default { getUsers, getUser, getMe, updateUser, deleteUser };
+export default {
+  getUsers,
+  getUser,
+  getMe,
+  updateUser,
+  deleteUser,
+};

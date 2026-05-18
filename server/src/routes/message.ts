@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth.js";
 import messageController from "../controllers/messageController.js";
+import { rmSync } from "fs";
 
 const router = Router();
 
