@@ -6,10 +6,13 @@ import {
   getFriendsList,
   getPendingFriendRequests,
   rejectFriendRequest,
+  getSentFriendRequests,
 } from "../controllers/friendshipController.js";
 
 const router = Router();
+
 router.get("/pending", authenticateToken, getPendingFriendRequests);
+router.get("/sent", authenticateToken, getSentFriendRequests);
 router.get("/", authenticateToken, getFriendsList);
 
 router.post("/request/:userId", authenticateToken, sendFriendRequest);

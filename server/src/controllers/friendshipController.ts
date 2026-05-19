@@ -1,4 +1,3 @@
-import { fr } from "zod/locales";
 import { prisma } from "../../lib/prisma.js";
 import { Request, Response, NextFunction } from "express";
 
@@ -47,6 +46,7 @@ const sendFriendRequest = async (
         PENDING: `Friend request already sent to ${receiver.username}`,
         ACCEPTED: `You are already friends with ${receiver.username}`,
         BLOCKED: "Unable to send friend request",
+        REJECTED: `You have a rejected friend request with ${receiver.username}`,
       };
       return res
         .status(400)
@@ -187,8 +187,10 @@ const getFriendsList = async (
 
     const friendships = await prisma.friendship.findMany({
       where: {
-        status: "ACCEPTED",
-        OR: [{ userId: userId }, { friendId: userId }],
+        AND: [
+          { status: "ACCEPTED" },
+          { OR: [{ userId }, { friendId: userId }] },
+        ],
       },
       select: {
         userId: true,
@@ -260,10 +262,38 @@ const rejectFriendRequest = async (
   }
 };
 
+const getSentFriendRequests = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const sent = await prisma.friendship.findMany({
+      where: { userId, status: "PENDING" },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        friend: {
+          select: { id: true, username: true, avatar: true },
+        },
+      },
+    });
+
+    return res.status(200).json({ data: sent });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   sendFriendRequest,
   getPendingFriendRequests,
   acceptFriendRequest,
   getFriendsList,
   rejectFriendRequest,
+  getSentFriendRequests,
 };
