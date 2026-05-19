@@ -5,27 +5,52 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
 import { usersApi } from "../api/users";
 import { friendsApi } from "../api/friends";
-import type { User } from "../types/index";
+import type { User, Friendship } from "../types/index";
 
 const Sidebar = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"chats" | "friends">("chats");
+  const [tab, setTab] = useState<"chats" | "users">("chats");
   const queryClient = useQueryClient();
 
-  const { data } = useQuery({
+  const { data: usersData } = useQuery({
     queryKey: ["users", search],
     queryFn: () => usersApi.getUsers(1, 20, search),
+  });
+
+  const { data: friendsData } = useQuery({
+    queryKey: ["friends"],
+    queryFn: friendsApi.getFriends,
+  });
+
+  const { data: pendingData } = useQuery({
+    queryKey: ["pending"],
+    queryFn: friendsApi.getPending,
   });
 
   const { mutate: sendRequest } = useMutation({
     mutationFn: (userId: string) => friendsApi.sendRequest(userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["friends"] });
       queryClient.invalidateQueries({ queryKey: ["pending"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err: any) => {
+      alert(err.message);
     },
   });
+
+  const getRelationship = (userId: string) => {
+    const isFriend = friendsData?.data.some(
+      (f: Friendship) => f.friend?.id === userId || f.user?.id === userId,
+    );
+    const isPending = pendingData?.data.some(
+      (p: Friendship) => p.user?.id === userId,
+    );
+    if (isFriend) return "friend";
+    if (isPending) return "pending";
+    return "none";
+  };
 
   const handleLogout = () => {
     logout();
@@ -47,7 +72,7 @@ const Sidebar = () => {
       </Header>
 
       <SearchBar
-        placeholder="Search users..."
+        placeholder="Search..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
@@ -56,36 +81,85 @@ const Sidebar = () => {
         <Tab $active={tab === "chats"} onClick={() => setTab("chats")}>
           Chats
         </Tab>
-        <Tab
-          $active={tab === "friends"}
-          onClick={() => {
-            setTab("friends");
-            navigate("/friends");
-          }}
-        >
-          Friends
+        <Tab $active={tab === "users"} onClick={() => setTab("users")}>
+          People
+          {pendingData?.data.length ? (
+            <Badge>{pendingData.data.length}</Badge>
+          ) : null}
         </Tab>
       </Tabs>
 
       <UserList>
-        {data?.users.map((u: User) => (
-          <UserItem key={u.id}>
-            <UserAvatar onClick={() => navigate(`/messages/${u.id}`)}>
-              {u.avatar ? (
-                <img src={u.avatar} alt={u.username} />
-              ) : (
-                <Initials>{u.username[0].toUpperCase()}</Initials>
-              )}
-            </UserAvatar>
-            <UserInfo onClick={() => navigate(`/messages/${u.id}`)}>
-              <UserName>{u.username}</UserName>
-              {u.bio && <UserBio>{u.bio}</UserBio>}
-            </UserInfo>
-            {u.id !== user?.id && (
-              <AddButton onClick={() => sendRequest(u.id)}>+</AddButton>
+        {tab === "chats" && (
+          <>
+            {/* self chat always at top */}
+            <UserItem onClick={() => navigate(`/messages/${user?.id}`)}>
+              <UserAvatar>
+                {user?.avatar ? (
+                  <img src={user.avatar} alt={user.username} />
+                ) : (
+                  <Initials>{user?.username?.[0].toUpperCase()}</Initials>
+                )}
+              </UserAvatar>
+              <UserInfo>
+                <UserName>You (Notes)</UserName>
+                <UserBio>Message yourself</UserBio>
+              </UserInfo>
+            </UserItem>
+
+            {friendsData?.data.map((f: Friendship) => (
+              <UserItem
+                key={f.id}
+                onClick={() => navigate(`/messages/${f.friend?.id}`)}
+              >
+                <UserAvatar>
+                  {f.friend?.avatar ? (
+                    <img src={f.friend.avatar} alt={f.friend.username} />
+                  ) : (
+                    <Initials>{f.friend?.username?.[0].toUpperCase()}</Initials>
+                  )}
+                </UserAvatar>
+                <UserInfo>
+                  <UserName>{f.friend?.username}</UserName>
+                </UserInfo>
+              </UserItem>
+            ))}
+
+            {friendsData?.data.length === 0 && (
+              <Empty>No friends yet — go to People to add some</Empty>
             )}
-          </UserItem>
-        ))}
+          </>
+        )}
+
+        {tab === "users" && (
+          <>
+            {usersData?.users
+              .filter((u: User) => u.id !== user?.id)
+              .map((u: User) => (
+                <UserItem key={u.id}>
+                  <UserAvatar onClick={() => navigate(`/messages/${u.id}`)}>
+                    {u.avatar ? (
+                      <img src={u.avatar} alt={u.username} />
+                    ) : (
+                      <Initials>{u.username[0].toUpperCase()}</Initials>
+                    )}
+                  </UserAvatar>
+                  <UserInfo onClick={() => navigate(`/messages/${u.id}`)}>
+                    <UserName>{u.username}</UserName>
+                    {u.bio && <UserBio>{u.bio}</UserBio>}
+                  </UserInfo>
+                  {(() => {
+                    const rel = getRelationship(u.id);
+                    if (rel === "friend") return <StatusBadge>✓</StatusBadge>;
+                    if (rel === "pending") return <StatusBadge>⏳</StatusBadge>;
+                    return (
+                      <AddButton onClick={() => sendRequest(u.id)}>+</AddButton>
+                    );
+                  })()}
+                </UserItem>
+              ))}
+          </>
+        )}
       </UserList>
     </Container>
   );
@@ -176,11 +250,24 @@ const Tab = styled.button<{ $active: boolean }>`
   border-radius: ${({ theme }) => theme.borderRadius.sm};
   font-size: 14px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   color: ${({ theme, $active }) =>
     $active ? theme.colors.sentBubble : theme.colors.textLight};
   background: ${({ theme, $active }) =>
     $active ? `${theme.colors.sentBubble}15` : "transparent"};
   transition: all 0.2s;
+`;
+
+const Badge = styled.span`
+  background: ${({ theme }) => theme.colors.danger};
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: ${({ theme }) => theme.borderRadius.full};
 `;
 
 const UserList = styled.div`
@@ -194,6 +281,7 @@ const UserItem = styled.div`
   align-items: center;
   padding: 10px 16px;
   gap: 12px;
+  cursor: pointer;
   transition: background 0.15s;
 
   &:hover {
@@ -211,7 +299,6 @@ const UserAvatar = styled.div`
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
-  cursor: pointer;
 
   img {
     width: 100%;
@@ -223,7 +310,6 @@ const UserAvatar = styled.div`
 const UserInfo = styled.div`
   flex: 1;
   overflow: hidden;
-  cursor: pointer;
 `;
 
 const UserName = styled.p`
@@ -238,6 +324,13 @@ const UserBio = styled.p`
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+`;
+
+const Empty = styled.p`
+  font-size: 14px;
+  color: ${({ theme }) => theme.colors.textLight};
+  padding: 20px 16px;
+  text-align: center;
 `;
 
 const AddButton = styled.button`
@@ -256,6 +349,13 @@ const AddButton = styled.button`
   &:hover {
     opacity: 0.85;
   }
+`;
+
+const StatusBadge = styled.span`
+  font-size: 14px;
+  color: ${({ theme }) => theme.colors.textLight};
+  width: 28px;
+  text-align: center;
 `;
 
 export default Sidebar;
