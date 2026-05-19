@@ -2,7 +2,13 @@ import styled from "styled-components";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { friendsApi } from "../api/friends";
-import type { Friendship } from "../types/index";
+
+type FriendItem = { id: string; username: string; avatar?: string };
+type PendingItem = {
+  id: string;
+  status: string;
+  user: FriendItem;
+};
 
 const FriendsPage = () => {
   const navigate = useNavigate();
@@ -23,6 +29,7 @@ const FriendsPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["friends"] });
       queryClient.invalidateQueries({ queryKey: ["pending"] });
+      queryClient.invalidateQueries({ queryKey: ["sent"] });
     },
   });
 
@@ -45,7 +52,7 @@ const FriendsPage = () => {
 
         {pendingData?.data.length === 0 && <Empty>No pending requests</Empty>}
 
-        {pendingData?.data.map((req: Friendship) => (
+        {pendingData?.data.map((req: PendingItem) => (
           <FriendItem key={req.id}>
             <FriendAvatar>
               {req.user?.avatar ? (
@@ -73,21 +80,19 @@ const FriendsPage = () => {
 
         {friendsData?.data.length === 0 && <Empty>No friends yet</Empty>}
 
-        {friendsData?.data.map((f: Friendship) => (
+        {friendsData?.data.map((f: FriendItem) => (
           <FriendItem key={f.id}>
             <FriendAvatar>
-              {f.friend?.avatar ? (
-                <img src={f.friend.avatar} alt={f.friend.username} />
+              {f.avatar ? (
+                <img src={f.avatar} alt={f.username} />
               ) : (
-                <span>{f.friend?.username?.[0].toUpperCase()}</span>
+                <span>{f.username?.[0].toUpperCase()}</span>
               )}
             </FriendAvatar>
             <FriendInfo>
-              <FriendName>{f.friend?.username}</FriendName>
+              <FriendName>{f.username}</FriendName>
             </FriendInfo>
-            <MessageButton
-              onClick={() => navigate(`/messages/${f.friend?.id}`)}
-            >
+            <MessageButton onClick={() => navigate(`/messages/${f.id}`)}>
               Message
             </MessageButton>
           </FriendItem>

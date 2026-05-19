@@ -69,36 +69,40 @@ const Sidebar = () => {
 
   return (
     <Container>
+      // in Sidebar.tsx Header
       <Header>
-        <Avatar onClick={() => navigate("/profile")}>
-          {user?.avatar ? (
-            <img src={user.avatar} alt={user.username} />
-          ) : (
-            <Initials>{user?.username?.[0].toUpperCase()}</Initials>
-          )}
-        </Avatar>
+        <Avatar onClick={() => navigate("/profile")}>...</Avatar>
         <Username>{user?.username}</Username>
+        <FriendsLink onClick={() => navigate("/friends")}>
+          👥
+          {pendingData?.data.length ? (
+            <NotifDot>{pendingData.data.length}</NotifDot>
+          ) : null}
+        </FriendsLink>
         <LogoutButton onClick={handleLogout}>↩</LogoutButton>
       </Header>
-
       <SearchBar
         placeholder="Search..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
-
       <Tabs>
         <Tab $active={tab === "chats"} onClick={() => setTab("chats")}>
           Chats
         </Tab>
-        <Tab $active={tab === "users"} onClick={() => setTab("users")}>
+        <Tab
+          $active={tab === "users"}
+          onClick={() => {
+            setTab("users");
+            navigate("/friends");
+          }}
+        >
           People
           {pendingData?.data.length ? (
             <Badge>{pendingData.data.length}</Badge>
           ) : null}
         </Tab>
       </Tabs>
-
       <UserList>
         {tab === "chats" && (
           <>
@@ -196,6 +200,30 @@ const Header = styled.div`
   padding: 16px;
   gap: 10px;
   border-bottom: 1px solid ${({ theme }) => theme.colors.border};
+`;
+const FriendsLink = styled.button`
+  position: relative;
+  font-size: 18px;
+  color: ${({ theme }) => theme.colors.textLight};
+  &:hover {
+    color: ${({ theme }) => theme.colors.text};
+  }
+`;
+
+const NotifDot = styled.span`
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: ${({ theme }) => theme.colors.danger};
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `;
 
 const Avatar = styled.div`
