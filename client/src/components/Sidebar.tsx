@@ -1,50 +1,36 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import styled from "styled-components";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
 import { usersApi } from "../api/users";
+import { friendsApi } from "../api/friends";
 import type { User } from "../types/index";
 
 const Sidebar = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<"chats" | "friends">("chats");
+  const queryClient = useQueryClient();
 
-  // Debounce logic to prevent spamming your backend
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 300);
-
-    return () => clearTimeout(handler);
-  }, [search]);
-
-  // Using the debounced search term for the cache key and fetch function
   const { data } = useQuery({
-    queryKey: ["users", debouncedSearch],
-    queryFn: () => usersApi.getUsers(1, 20, debouncedSearch),
-    enabled: true, // Optional: set to false if you don't want to query on empty input
+    queryKey: ["users", search],
+    queryFn: () => usersApi.getUsers(1, 20, search),
+  });
+
+  const { mutate: sendRequest } = useMutation({
+    mutationFn: (userId: string) => friendsApi.sendRequest(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
+      queryClient.invalidateQueries({ queryKey: ["pending"] });
+    },
   });
 
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
-
-  if (!user) {
-    return (
-      <Container>
-        <Header style={{ justifyContent: "center" }}>
-          <Username style={{ textAlign: "center" }}>
-            Loading profile...
-          </Username>
-        </Header>
-      </Container>
-    );
-  }
 
   return (
     <Container>
@@ -53,8 +39,7 @@ const Sidebar = () => {
           {user?.avatar ? (
             <img src={user.avatar} alt={user.username} />
           ) : (
-            // FIX: added safe chaining to .toUpperCase()
-            <Initials>{user?.username?.[0]?.toUpperCase() || "?"}</Initials>
+            <Initials>{user?.username?.[0].toUpperCase()}</Initials>
           )}
         </Avatar>
         <Username>{user?.username}</Username>
@@ -71,26 +56,34 @@ const Sidebar = () => {
         <Tab $active={tab === "chats"} onClick={() => setTab("chats")}>
           Chats
         </Tab>
-        <Tab $active={tab === "friends"} onClick={() => setTab("friends")}>
+        <Tab
+          $active={tab === "friends"}
+          onClick={() => {
+            setTab("friends");
+            navigate("/friends");
+          }}
+        >
           Friends
         </Tab>
       </Tabs>
 
       <UserList>
         {data?.users.map((u: User) => (
-          <UserItem key={u.id} onClick={() => navigate(`/messages/${u.id}`)}>
-            <UserAvatar>
+          <UserItem key={u.id}>
+            <UserAvatar onClick={() => navigate(`/messages/${u.id}`)}>
               {u.avatar ? (
                 <img src={u.avatar} alt={u.username} />
               ) : (
-                // FIX: Added safe fallback handling here too
-                <Initials>{u.username?.[0]?.toUpperCase() || "?"}</Initials>
+                <Initials>{u.username[0].toUpperCase()}</Initials>
               )}
             </UserAvatar>
-            <UserInfo>
+            <UserInfo onClick={() => navigate(`/messages/${u.id}`)}>
               <UserName>{u.username}</UserName>
               {u.bio && <UserBio>{u.bio}</UserBio>}
             </UserInfo>
+            {u.id !== user?.id && (
+              <AddButton onClick={() => sendRequest(u.id)}>+</AddButton>
+            )}
           </UserItem>
         ))}
       </UserList>
@@ -98,7 +91,6 @@ const Sidebar = () => {
   );
 };
 
-// Styled components remain unchanged...
 const Container = styled.aside`
   width: 300px;
   min-width: 300px;
@@ -202,7 +194,6 @@ const UserItem = styled.div`
   align-items: center;
   padding: 10px 16px;
   gap: 12px;
-  cursor: pointer;
   transition: background 0.15s;
 
   &:hover {
@@ -220,6 +211,7 @@ const UserAvatar = styled.div`
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+  cursor: pointer;
 
   img {
     width: 100%;
@@ -231,6 +223,7 @@ const UserAvatar = styled.div`
 const UserInfo = styled.div`
   flex: 1;
   overflow: hidden;
+  cursor: pointer;
 `;
 
 const UserName = styled.p`
@@ -245,6 +238,24 @@ const UserBio = styled.p`
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+`;
+
+const AddButton = styled.button`
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: ${({ theme }) => theme.colors.sentBubble};
+  color: white;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.85;
+  }
 `;
 
 export default Sidebar;

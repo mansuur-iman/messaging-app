@@ -7,6 +7,7 @@ import RegisterPage from "./pages/RegisterPage";
 import ChatLayout from "./pages/ChatLayout";
 import ChatPage from "./pages/ChatPage";
 import ProfilePage from "./pages/ProfilePage";
+import FriendsPage from "./pages/FriendsPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -27,6 +28,7 @@ function App() {
           <Route index element={<EmptyChat />} />
           <Route path="messages/:userId" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="friends" element={<FriendsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
