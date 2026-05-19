@@ -5,7 +5,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
 import { usersApi } from "../api/users";
 import { friendsApi } from "../api/friends";
-import type { User, Friendship } from "../types/index";
+import type { User } from "../types/index";
+
+type FriendItem = { id: string; username: string; avatar?: string };
+type SentItem = { id: string; status: string; friend: FriendItem };
+type PendingItem = { id: string; status: string; user: FriendItem };
 
 const Sidebar = () => {
   const navigate = useNavigate();
@@ -29,11 +33,15 @@ const Sidebar = () => {
     queryFn: friendsApi.getPending,
   });
 
+  const { data: sentData } = useQuery({
+    queryKey: ["sent"],
+    queryFn: friendsApi.getSentRequests,
+  });
+
   const { mutate: sendRequest } = useMutation({
     mutationFn: (userId: string) => friendsApi.sendRequest(userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pending"] });
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["sent"] });
     },
     onError: (err: any) => {
       alert(err.message);
@@ -41,14 +49,16 @@ const Sidebar = () => {
   });
 
   const getRelationship = (userId: string) => {
-    const isFriend = friendsData?.data.some(
-      (f: Friendship) => f.friend?.id === userId || f.user?.id === userId,
+    const isFriend = friendsData?.data.some((f: FriendItem) => f.id === userId);
+    const isPendingSent = sentData?.data.some(
+      (p: SentItem) => p.friend?.id === userId,
     );
-    const isPending = pendingData?.data.some(
-      (p: Friendship) => p.user?.id === userId,
+    const isPendingReceived = pendingData?.data.some(
+      (p: PendingItem) => p.user?.id === userId,
     );
     if (isFriend) return "friend";
-    if (isPending) return "pending";
+    if (isPendingSent) return "pending_sent";
+    if (isPendingReceived) return "pending_received";
     return "none";
   };
 
@@ -92,7 +102,6 @@ const Sidebar = () => {
       <UserList>
         {tab === "chats" && (
           <>
-            {/* self chat always at top */}
             <UserItem onClick={() => navigate(`/messages/${user?.id}`)}>
               <UserAvatar>
                 {user?.avatar ? (
@@ -107,20 +116,20 @@ const Sidebar = () => {
               </UserInfo>
             </UserItem>
 
-            {friendsData?.data.map((f: Friendship) => (
+            {friendsData?.data.map((f: FriendItem) => (
               <UserItem
                 key={f.id}
-                onClick={() => navigate(`/messages/${f.friend?.id}`)}
+                onClick={() => navigate(`/messages/${f.id}`)}
               >
                 <UserAvatar>
-                  {f.friend?.avatar ? (
-                    <img src={f.friend.avatar} alt={f.friend.username} />
+                  {f.avatar ? (
+                    <img src={f.avatar} alt={f.username} />
                   ) : (
-                    <Initials>{f.friend?.username?.[0].toUpperCase()}</Initials>
+                    <Initials>{f.username?.[0].toUpperCase()}</Initials>
                   )}
                 </UserAvatar>
                 <UserInfo>
-                  <UserName>{f.friend?.username}</UserName>
+                  <UserName>{f.username}</UserName>
                 </UserInfo>
               </UserItem>
             ))}
@@ -150,8 +159,14 @@ const Sidebar = () => {
                   </UserInfo>
                   {(() => {
                     const rel = getRelationship(u.id);
-                    if (rel === "friend") return <StatusBadge>✓</StatusBadge>;
-                    if (rel === "pending") return <StatusBadge>⏳</StatusBadge>;
+                    if (rel === "friend")
+                      return (
+                        <StatusBadge $color="green">✓ Friends</StatusBadge>
+                      );
+                    if (rel === "pending_sent")
+                      return <StatusBadge $color="gray">⏳ Sent</StatusBadge>;
+                    if (rel === "pending_received")
+                      return <StatusBadge $color="blue">📩 Accept</StatusBadge>;
                     return (
                       <AddButton onClick={() => sendRequest(u.id)}>+</AddButton>
                     );
@@ -351,11 +366,24 @@ const AddButton = styled.button`
   }
 `;
 
-const StatusBadge = styled.span`
-  font-size: 14px;
-  color: ${({ theme }) => theme.colors.textLight};
-  width: 28px;
-  text-align: center;
+const StatusBadge = styled.span<{ $color: string }>`
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: ${({ theme }) => theme.borderRadius.full};
+  white-space: nowrap;
+  color: ${({ $color, theme }) =>
+    $color === "green"
+      ? theme.colors.online
+      : $color === "blue"
+        ? theme.colors.sentBubble
+        : theme.colors.textLight};
+  background: ${({ $color, theme }) =>
+    $color === "green"
+      ? `${theme.colors.online}15`
+      : $color === "blue"
+        ? `${theme.colors.sentBubble}15`
+        : theme.colors.border};
 `;
 
 export default Sidebar;

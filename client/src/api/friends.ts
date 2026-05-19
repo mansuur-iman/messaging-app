@@ -10,4 +10,5 @@ export const friendsApi = {
     api.put<{ data: Friendship }>(`/friendships/reject/${requestId}`, {}),
   getFriends: () => api.get<{ data: Friendship[] }>("/friendships"),
   getPending: () => api.get<{ data: Friendship[] }>("/friendships/pending"),
+  getSentRequests: () => api.get<{ data: Friendship[] }>("/friendships/sent"),
 };
