@@ -1,11 +1,10 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/auth.js";
-import messageController from "../controllers/messageController.js";
-import { rmSync } from "fs";
+import { sendMessage, getMessages } from "../controllers/messageController.js";
 
 const router = Router();
 
-router.post("/:userId", authenticateToken, messageController.sendMessage);
-router.get("/:userId", authenticateToken, messageController.getMessages);
+router.post("/:userId", authenticateToken, sendMessage);
+router.get("/:userId", authenticateToken, getMessages);
 
 export default router;

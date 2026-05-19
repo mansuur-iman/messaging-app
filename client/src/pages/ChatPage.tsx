@@ -24,7 +24,7 @@ const ChatPage = () => {
     queryKey: ["messages", userId],
     queryFn: () => messagesApi.getMessages(userId!),
     enabled: !!userId,
-    refetchInterval: 5000, // poll every 5 seconds
+    refetchInterval: 30000, // poll every 5 seconds
   });
 
   const { mutate: sendMessage, isPending } = useMutation({

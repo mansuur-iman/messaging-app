@@ -16,12 +16,12 @@ const getUsers = async (
   try {
     const { page, limit } = req.query;
 
-    const { skip, limit: take } = paginate(
-      parseInt(page || "1"),
-      parseInt(limit || "20"),
-    );
+    const pageNumber = parseInt(page || "1", 10);
+    const limitNumber = parseInt(limit || "20", 10);
 
-    const [users, total] = await prisma.$transaction([
+    const { skip, limit: take } = paginate(pageNumber, limitNumber);
+
+    const [users, total] = await Promise.all([
       prisma.user.findMany({
         select: {
           id: true,
@@ -41,7 +41,7 @@ const getUsers = async (
     res.status(200).json({
       users,
       total,
-      page: parseInt(page || "1"),
+      page: pageNumber,
     });
   } catch (error) {
     next(error);
@@ -78,6 +78,10 @@ const getUser = async (
 
 const getMe = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
     const user = await prisma.user.findUnique({
       where: { id: req.user?.userId },
       select: {

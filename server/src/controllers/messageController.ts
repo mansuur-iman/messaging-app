@@ -100,7 +100,7 @@ const getMessages = async (
       });
     }
 
-    const [messages, total] = await prisma.$transaction([
+    const [messages, total] = await Promise.all([
       prisma.message.findMany({
         where: conversationFilter,
         orderBy: { createdAt: "desc" },
