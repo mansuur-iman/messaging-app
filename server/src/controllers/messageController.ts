@@ -38,6 +38,23 @@ const sendMessage = async (
         return res.status(404).json({ message: "Receiver not found" });
       }
     }
+
+    const friendship = await prisma.friendship.findFirst({
+      where: {
+        status: "ACCEPTED",
+        OR: [
+          { userId: senderId, friendId: userId },
+          { userId, friendId: senderId },
+        ],
+      },
+    });
+
+    if (!friendship) {
+      return res
+        .status(403)
+        .json({ message: "You can only message your friends" });
+    }
+
     const message = await prisma.message.create({
       data: {
         content: parsed.data.content,
