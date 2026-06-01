@@ -1,5 +1,10 @@
 import { api } from "./client";
-import type { Friendship } from "../types/index";
+import type {
+  Friendship,
+  FriendItem,
+  PendingItem,
+  SentItem,
+} from "../types/index";
 
 export const friendsApi = {
   sendRequest: (userId: string) =>
@@ -8,7 +13,7 @@ export const friendsApi = {
     api.put<{ data: Friendship }>(`/friendships/accept/${requestId}`, {}),
   rejectRequest: (requestId: string) =>
     api.put<{ data: Friendship }>(`/friendships/reject/${requestId}`, {}),
-  getFriends: () => api.get<{ data: Friendship[] }>("/friendships"),
-  getPending: () => api.get<{ data: Friendship[] }>("/friendships/pending"),
-  getSentRequests: () => api.get<{ data: Friendship[] }>("/friendships/sent"),
+  getFriends: () => api.get<{ data: FriendItem[] }>("/friendships"),
+  getPending: () => api.get<{ data: PendingItem[] }>("/friendships/pending"),
+  getSentRequests: () => api.get<{ data: SentItem[] }>("/friendships/sent"),
 };

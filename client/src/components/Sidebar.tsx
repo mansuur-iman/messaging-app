@@ -1,26 +1,61 @@
-import { useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import styled from "styled-components";
-import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
 import { usersApi } from "../api/users";
 import { friendsApi } from "../api/friends";
-import type { User } from "../types/index";
+import type { User, FriendItem, PendingItem, SentItem } from "../types";
 
-type FriendItem = { id: string; username: string; avatar?: string };
-type SentItem = { id: string; status: string; friend: FriendItem };
-type PendingItem = { id: string; status: string; user: FriendItem };
+// --- Custom Debounce Hook ---
+function useDebounce<T>(value: T, delay = 300): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+// --- Reusable Shared Avatar Component ---
+interface AvatarProps {
+  avatar?: string;
+  username?: string;
+  showOnline?: boolean;
+}
+
+const Avatar = ({ avatar, username, showOnline }: AvatarProps) => (
+  <AvatarWrapper>
+    <UserAvatar>
+      {avatar ? (
+        <img src={avatar} alt={username || "User"} />
+      ) : (
+        <Initials>{username?.[0]?.toUpperCase() || "?"}</Initials>
+      )}
+    </UserAvatar>
+    {showOnline && <OnlineDot />}
+  </AvatarWrapper>
+);
+
+// --- Main Sidebar Component ---
 const Sidebar = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuthStore();
-  const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"chats" | "users">("chats");
   const queryClient = useQueryClient();
 
-  const { data: usersData } = useQuery({
-    queryKey: ["users", search],
-    queryFn: () => usersApi.getUsers(1, 20, search),
+  const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<"chats" | "people">("chats");
+
+  const debouncedSearch = useDebounce(search, 300);
+
+  // --- React Query Implementations ---
+  const { data: usersData, isLoading: isLoadingUsers } = useQuery({
+    queryKey: ["users", debouncedSearch],
+    queryFn: () => usersApi.getUsers(1, 20, debouncedSearch),
+    enabled: tab === "people", // Optimization: Only query when looking at discover tab
   });
 
   const { data: friendsData } = useQuery({
@@ -31,6 +66,7 @@ const Sidebar = () => {
   const { data: pendingData } = useQuery({
     queryKey: ["pending"],
     queryFn: friendsApi.getPending,
+    refetchInterval: 5000,
   });
 
   const { data: sentData } = useQuery({
@@ -42,25 +78,35 @@ const Sidebar = () => {
     mutationFn: (userId: string) => friendsApi.sendRequest(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sent"] });
-    },
-    onError: (err: any) => {
-      alert(err.message);
+      queryClient.invalidateQueries({ queryKey: ["pending"] });
     },
   });
 
+  // --- Safe Structural Type Coercions ---
+  const friends = (friendsData?.data as FriendItem[]) || [];
+  const users = (usersData?.users as User[]) || [];
+  const pending = (pendingData?.data as PendingItem[]) || [];
+  const sent = (sentData?.data as SentItem[]) || [];
+
+  // --- Optimization: O(1) Lookups instead of inner loop iterations ---
+  const lookupMaps = useMemo(() => {
+    return {
+      friendIds: new Set(friends.map((f) => f.id)),
+      sentIds: new Set(sent.map((p) => p.friend?.id).filter(Boolean)),
+      receivedIds: new Set(pending.map((p) => p.user?.id).filter(Boolean)),
+    };
+  }, [friends, sent, pending]);
+
   const getRelationship = (userId: string) => {
-    const isFriend = friendsData?.data.some((f: FriendItem) => f.id === userId);
-    const isPendingSent = sentData?.data.some(
-      (p: SentItem) => p.friend?.id === userId,
-    );
-    const isPendingReceived = pendingData?.data.some(
-      (p: PendingItem) => p.user?.id === userId,
-    );
-    if (isFriend) return "friend";
-    if (isPendingSent) return "pending_sent";
-    if (isPendingReceived) return "pending_received";
+    if (lookupMaps.friendIds.has(userId)) return "friend";
+    if (lookupMaps.sentIds.has(userId)) return "pending_sent";
+    if (lookupMaps.receivedIds.has(userId)) return "pending_received";
     return "none";
   };
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => u.id !== user?.id);
+  }, [users, user?.id]);
 
   const handleLogout = () => {
     logout();
@@ -69,175 +115,405 @@ const Sidebar = () => {
 
   return (
     <Container>
-      // in Sidebar.tsx Header
-      <Header>
-        <Avatar onClick={() => navigate("/profile")}>...</Avatar>
-        <Username>{user?.username}</Username>
-        <FriendsLink onClick={() => navigate("/friends")}>
-          👥
-          {pendingData?.data.length ? (
-            <NotifDot>{pendingData.data.length}</NotifDot>
-          ) : null}
-        </FriendsLink>
-        <LogoutButton onClick={handleLogout}>↩</LogoutButton>
-      </Header>
-      <SearchBar
-        placeholder="Search..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      <Tabs>
-        <Tab $active={tab === "chats"} onClick={() => setTab("chats")}>
-          Chats
-        </Tab>
-        <Tab
-          $active={tab === "users"}
-          onClick={() => {
-            setTab("users");
-            navigate("/friends");
-          }}
-        >
-          People
-          {pendingData?.data.length ? (
-            <Badge>{pendingData.data.length}</Badge>
-          ) : null}
-        </Tab>
-      </Tabs>
-      <UserList>
+      <TopSection>
+        <Header>
+          <ProfileButton
+            onClick={() => navigate("/profile")}
+            aria-label="View Profile"
+          >
+            <Avatar
+              avatar={user?.avatar}
+              username={user?.username}
+              showOnline
+            />
+          </ProfileButton>
+
+          <HeaderInfo>
+            <Username>{user?.username}</Username>
+            <StatusText>Online</StatusText>
+          </HeaderInfo>
+
+          <HeaderActions>
+            <FriendsButton
+              onClick={() => navigate("/friends")}
+              aria-label="Friends requests"
+            >
+              <span>👥</span>
+              {pending.length > 0 && <NotifBadge>{pending.length}</NotifBadge>}
+            </FriendsButton>
+            <LogoutButton onClick={handleLogout} aria-label="Logout">
+              ↩
+            </LogoutButton>
+          </HeaderActions>
+        </Header>
+
+        <SearchWrapper>
+          <SearchBar
+            placeholder={
+              tab === "chats" ? "Search chats..." : "Search people..."
+            }
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </SearchWrapper>
+
+        <Tabs>
+          <Tab $active={tab === "chats"} onClick={() => setTab("chats")}>
+            Chats
+          </Tab>
+          <Tab $active={tab === "people"} onClick={() => setTab("people")}>
+            People
+            {pending.length > 0 && <TabBadge>{pending.length}</TabBadge>}
+          </Tab>
+        </Tabs>
+      </TopSection>
+
+      <Content>
         {tab === "chats" && (
           <>
-            <UserItem onClick={() => navigate(`/messages/${user?.id}`)}>
-              <UserAvatar>
-                {user?.avatar ? (
-                  <img src={user.avatar} alt={user.username} />
-                ) : (
-                  <Initials>{user?.username?.[0].toUpperCase()}</Initials>
-                )}
-              </UserAvatar>
-              <UserInfo>
-                <UserName>You (Notes)</UserName>
-                <UserBio>Message yourself</UserBio>
-              </UserInfo>
-            </UserItem>
+            <SectionTitle>Messages</SectionTitle>
 
-            {friendsData?.data.map((f: FriendItem) => (
-              <UserItem
-                key={f.id}
-                onClick={() => navigate(`/messages/${f.id}`)}
+            {/* Notes to self */}
+            <ChatCard
+              $active={location.pathname === `/messages/${user?.id}`}
+              onClick={() => navigate(`/messages/${user?.id}`)}
+            >
+              <Avatar avatar={user?.avatar} username={user?.username} />
+              <ChatInfo>
+                <ChatTop>
+                  <UserName>Notes</UserName>
+                  <ChatTime>You</ChatTime>
+                </ChatTop>
+                <LastMessage>Message yourself</LastMessage>
+              </ChatInfo>
+            </ChatCard>
+
+            {/* Active friends chats */}
+            {friends.map((friend) => (
+              <ChatCard
+                key={friend.id}
+                $active={location.pathname === `/messages/${friend.id}`}
+                onClick={() => navigate(`/messages/${friend.id}`)}
               >
-                <UserAvatar>
-                  {f.avatar ? (
-                    <img src={f.avatar} alt={f.username} />
-                  ) : (
-                    <Initials>{f.username?.[0].toUpperCase()}</Initials>
-                  )}
-                </UserAvatar>
-                <UserInfo>
-                  <UserName>{f.username}</UserName>
-                </UserInfo>
-              </UserItem>
+                <Avatar
+                  avatar={friend.avatar}
+                  username={friend.username}
+                  showOnline
+                />
+                <ChatInfo>
+                  <ChatTop>
+                    <UserName>{friend.username}</UserName>
+                    <ChatTime>Chat</ChatTime>
+                  </ChatTop>
+                  <LastMessage>Start a conversation</LastMessage>
+                </ChatInfo>
+              </ChatCard>
             ))}
 
-            {friendsData?.data.length === 0 && (
-              <Empty>No friends yet — go to People to add some</Empty>
+            {!friends.length && (
+              <EmptyState>
+                <EmptyIcon>💬</EmptyIcon>
+                <EmptyTitle>No conversations yet</EmptyTitle>
+                <EmptyText>Add friends to start chatting</EmptyText>
+              </EmptyState>
             )}
           </>
         )}
 
-        {tab === "users" && (
+        {tab === "people" && (
           <>
-            {usersData?.users
-              .filter((u: User) => u.id !== user?.id)
-              .map((u: User) => (
-                <UserItem key={u.id}>
-                  <UserAvatar onClick={() => navigate(`/messages/${u.id}`)}>
-                    {u.avatar ? (
-                      <img src={u.avatar} alt={u.username} />
-                    ) : (
-                      <Initials>{u.username[0].toUpperCase()}</Initials>
-                    )}
-                  </UserAvatar>
-                  <UserInfo onClick={() => navigate(`/messages/${u.id}`)}>
-                    <UserName>{u.username}</UserName>
-                    {u.bio && <UserBio>{u.bio}</UserBio>}
-                  </UserInfo>
-                  {(() => {
-                    const rel = getRelationship(u.id);
-                    if (rel === "friend")
-                      return (
-                        <StatusBadge $color="green">✓ Friends</StatusBadge>
-                      );
-                    if (rel === "pending_sent")
-                      return <StatusBadge $color="gray">⏳ Sent</StatusBadge>;
-                    if (rel === "pending_received")
-                      return <StatusBadge $color="blue">📩 Accept</StatusBadge>;
-                    return (
-                      <AddButton onClick={() => sendRequest(u.id)}>+</AddButton>
-                    );
-                  })()}
-                </UserItem>
-              ))}
+            <SectionTitle>Discover People</SectionTitle>
+
+            {filteredUsers.map((u) => {
+              const rel = getRelationship(u.id);
+              return (
+                <PeopleCard key={u.id}>
+                  <LeftSection>
+                    <Avatar avatar={u.avatar} username={u.username} />
+                    <UserInfo>
+                      <UserName>{u.username}</UserName>
+                      <UserBio>{u.bio || "No bio yet"}</UserBio>
+                    </UserInfo>
+                  </LeftSection>
+
+                  {rel === "friend" && (
+                    <StatusBadge $variant="friend">Friends</StatusBadge>
+                  )}
+                  {rel === "pending_sent" && (
+                    <StatusBadge $variant="pending">Sent</StatusBadge>
+                  )}
+                  {rel === "pending_received" && (
+                    <StatusBadge $variant="received">Pending</StatusBadge>
+                  )}
+                  {rel === "none" && (
+                    <AddButton onClick={() => sendRequest(u.id)}>Add</AddButton>
+                  )}
+                </PeopleCard>
+              );
+            })}
+
+            {!isLoadingUsers && filteredUsers.length === 0 && (
+              <EmptyState>
+                <EmptyIcon>🔍</EmptyIcon>
+                <EmptyTitle>No users found</EmptyTitle>
+                <EmptyText>Try searching for a different name</EmptyText>
+              </EmptyState>
+            )}
           </>
         )}
-      </UserList>
+      </Content>
     </Container>
   );
 };
 
+// --- Updated & Cleaned Styled Elements ---
 const Container = styled.aside`
-  width: 300px;
-  min-width: 300px;
-  background: ${({ theme }) => theme.colors.sidebar};
-  border-right: 1px solid ${({ theme }) => theme.colors.border};
+  width: 340px;
+  max-width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  background: ${({ theme }) => theme.colors.sidebar};
+  border-right: 1px solid ${({ theme }) => theme.colors.border};
+  @media (max-width: 768px) {
+    width: 100%;
+  }
+`;
+
+const TopSection = styled.div`
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: ${({ theme }) => theme.colors.sidebar};
+  backdrop-filter: blur(8px);
 `;
 
 const Header = styled.div`
   display: flex;
   align-items: center;
-  padding: 16px;
-  gap: 10px;
-  border-bottom: 1px solid ${({ theme }) => theme.colors.border};
-`;
-const FriendsLink = styled.button`
-  position: relative;
-  font-size: 18px;
-  color: ${({ theme }) => theme.colors.textLight};
-  &:hover {
-    color: ${({ theme }) => theme.colors.text};
-  }
+  padding: 18px 16px;
+  gap: 12px;
 `;
 
-const NotifDot = styled.span`
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const ProfileButton = styled.button`
+  position: relative;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+`;
+
+const OnlineDot = styled.div`
   position: absolute;
-  top: -4px;
-  right: -4px;
-  background: ${({ theme }) => theme.colors.danger};
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  width: 16px;
-  height: 16px;
+  right: 2px;
+  bottom: 2px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
+  background: #22c55e;
+  border: 2px solid ${({ theme }) => theme.colors.sidebar};
+`;
+
+const HeaderInfo = styled.div`
+  flex: 1;
+  overflow: hidden;
+`;
+
+const Username = styled.p`
+  font-size: 15px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.text};
+`;
+
+const StatusText = styled.p`
+  margin-top: 2px;
+  font-size: 12px;
+  color: ${({ theme }) => theme.colors.textLight};
+`;
+
+const FriendsButton = styled.button`
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  background: ${({ theme }) => theme.colors.background};
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
+  span {
+    font-size: 18px;
+  }
+  &:hover {
+    transform: translateY(-1px);
+    background: ${({ theme }) => theme.colors.border};
+  }
 `;
 
-const Avatar = styled.div`
-  width: 36px;
-  height: 36px;
+const LogoutButton = styled.button`
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  background: ${({ theme }) => theme.colors.background};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  transition: all 0.2s ease;
+  &:hover {
+    transform: translateY(-1px);
+    background: ${({ theme }) => theme.colors.border};
+    color: ${({ theme }) => theme.colors.danger};
+  }
+`;
+
+const NotifBadge = styled.div`
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${({ theme }) => theme.colors.danger};
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border: 2px solid ${({ theme }) => theme.colors.sidebar};
+`;
+
+const SearchWrapper = styled.div`
+  padding: 0 16px 14px;
+`;
+
+const SearchBar = styled.input`
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  background: ${({ theme }) => theme.colors.background};
+  color: ${({ theme }) => theme.colors.text};
+  font-size: 14px;
+  transition: all 0.2s ease;
+  &:focus {
+    outline: none;
+    border-color: ${({ theme }) => theme.colors.sentBubble};
+    background: ${({ theme }) => theme.colors.sidebar};
+  }
+  &::placeholder {
+    color: ${({ theme }) => theme.colors.textLight};
+  }
+`;
+
+const Tabs = styled.div`
+  display: flex;
+  gap: 6px;
+  margin: 0 16px 14px;
+  padding: 4px;
+  border-radius: 14px;
+  background: ${({ theme }) => theme.colors.background};
+`;
+
+const Tab = styled.button<{ $active: boolean }>`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  background: ${({ theme, $active }) =>
+    $active ? theme.colors.sentBubble : "transparent"};
+  color: ${({ theme, $active }) =>
+    $active ? "white" : theme.colors.textLight};
+`;
+
+const TabBadge = styled.span`
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.18);
+`;
+
+const Content = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 20px;
+  scroll-behavior: smooth;
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: ${({ theme }) => theme.colors.border};
+    border-radius: 999px;
+  }
+`;
+
+const SectionTitle = styled.h3`
+  padding: 4px 18px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.textLight};
+`;
+
+// Shifting ChatCard to a Div style container eliminates HTML hierarchy issues
+const ChatCard = styled.div<{ $active: boolean }>`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: ${({ theme, $active }) =>
+    $active ? `${theme.colors.sentBubble}12` : "transparent"};
+  &:hover {
+    background: ${({ theme, $active }) =>
+      $active ? `${theme.colors.sentBubble}18` : theme.colors.border};
+  }
+`;
+
+const AvatarWrapper = styled.div`
+  position: relative;
+  flex-shrink: 0;
+`;
+
+const UserAvatar = styled.div`
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   overflow: hidden;
-  cursor: pointer;
   background: ${({ theme }) => theme.colors.sentBubble};
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-
   img {
     width: 100%;
     height: 100%;
@@ -247,171 +523,136 @@ const Avatar = styled.div`
 
 const Initials = styled.span`
   color: white;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
 `;
 
-const Username = styled.span`
+const ChatInfo = styled.div`
   flex: 1;
-  font-size: 15px;
-  font-weight: 600;
-  color: ${({ theme }) => theme.colors.text};
+  min-width: 0;
 `;
 
-const LogoutButton = styled.button`
-  font-size: 18px;
-  color: ${({ theme }) => theme.colors.textLight};
-  &:hover {
-    color: ${({ theme }) => theme.colors.danger};
-  }
-`;
-
-const SearchBar = styled.input`
-  margin: 12px;
-  padding: 8px 12px;
-  border-radius: ${({ theme }) => theme.borderRadius.full};
-  border: 1.5px solid ${({ theme }) => theme.colors.border};
-  background: ${({ theme }) => theme.colors.background};
-  font-size: 14px;
-  color: ${({ theme }) => theme.colors.text};
-
-  &::placeholder {
-    color: ${({ theme }) => theme.colors.textLight};
-  }
-`;
-
-const Tabs = styled.div`
-  display: flex;
-  padding: 0 12px;
-  gap: 8px;
-  margin-bottom: 8px;
-`;
-
-const Tab = styled.button<{ $active: boolean }>`
-  flex: 1;
-  padding: 8px;
-  border-radius: ${({ theme }) => theme.borderRadius.sm};
-  font-size: 14px;
-  font-weight: 500;
+const ChatTop = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: ${({ theme, $active }) =>
-    $active ? theme.colors.sentBubble : theme.colors.textLight};
-  background: ${({ theme, $active }) =>
-    $active ? `${theme.colors.sentBubble}15` : "transparent"};
-  transition: all 0.2s;
+  justify-content: space-between;
+  gap: 10px;
 `;
 
-const Badge = styled.span`
-  background: ${({ theme }) => theme.colors.danger};
-  color: white;
+const ChatTime = styled.span`
   font-size: 11px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: ${({ theme }) => theme.borderRadius.full};
+  color: ${({ theme }) => theme.colors.textLight};
 `;
 
-const UserList = styled.div`
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0;
+const LastMessage = styled.p`
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: ${({ theme }) => theme.colors.textLight};
 `;
 
-const UserItem = styled.div`
+const PeopleCard = styled.div`
   display: flex;
   align-items: center;
-  padding: 10px 16px;
+  justify-content: space-between;
   gap: 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-
+  padding: 12px 18px;
+  transition: background 0.18s ease;
   &:hover {
     background: ${({ theme }) => theme.colors.border};
   }
 `;
 
-const UserAvatar = styled.div`
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: ${({ theme }) => theme.colors.sentBubble};
+const LeftSection = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
+  gap: 14px;
+  min-width: 0;
 `;
 
 const UserInfo = styled.div`
-  flex: 1;
-  overflow: hidden;
+  min-width: 0;
 `;
 
 const UserName = styled.p`
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   color: ${({ theme }) => theme.colors.text};
 `;
 
 const UserBio = styled.p`
-  font-size: 13px;
-  color: ${({ theme }) => theme.colors.textLight};
-  white-space: nowrap;
+  margin-top: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
-`;
-
-const Empty = styled.p`
-  font-size: 14px;
+  white-space: nowrap;
+  font-size: 13px;
   color: ${({ theme }) => theme.colors.textLight};
-  padding: 20px 16px;
-  text-align: center;
 `;
 
 const AddButton = styled.button`
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: ${({ theme }) => theme.colors.sentBubble};
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
   color: white;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: opacity 0.2s;
-
+  background: ${({ theme }) => theme.colors.sentBubble};
+  transition: opacity 0.2s ease;
   &:hover {
-    opacity: 0.85;
+    opacity: 0.88;
   }
 `;
 
-const StatusBadge = styled.span<{ $color: string }>`
+const StatusBadge = styled.div<{ $variant: "friend" | "pending" | "received" }>`
+  padding: 7px 12px;
+  border-radius: 999px;
   font-size: 12px;
-  font-weight: 500;
-  padding: 4px 8px;
-  border-radius: ${({ theme }) => theme.borderRadius.full};
+  font-weight: 700;
   white-space: nowrap;
-  color: ${({ $color, theme }) =>
-    $color === "green"
+  color: ${({ theme, $variant }) =>
+    $variant === "friend"
       ? theme.colors.online
-      : $color === "blue"
+      : $variant === "received"
         ? theme.colors.sentBubble
         : theme.colors.textLight};
-  background: ${({ $color, theme }) =>
-    $color === "green"
+  background: ${({ theme, $variant }) =>
+    $variant === "friend"
       ? `${theme.colors.online}15`
-      : $color === "blue"
+      : $variant === "received"
         ? `${theme.colors.sentBubble}15`
         : theme.colors.border};
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 70px 20px;
+  text-align: center;
+`;
+
+const EmptyIcon = styled.div`
+  font-size: 44px;
+`;
+
+const EmptyTitle = styled.h4`
+  margin-top: 16px;
+  font-size: 18px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.text};
+`;
+
+const EmptyText = styled.p`
+  margin-top: 8px;
+  max-width: 220px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: ${({ theme }) => theme.colors.textLight};
 `;
 
 export default Sidebar;
