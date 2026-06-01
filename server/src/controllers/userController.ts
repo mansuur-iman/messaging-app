@@ -37,11 +37,12 @@ const getUsers = async (
       }),
       prisma.user.count(),
     ]);
-
     res.status(200).json({
-      users,
+      data: users,
       total,
       page: pageNumber,
+      totalPages: Math.ceil(total / limitNumber),
+      hasMore: pageNumber * limitNumber < total,
     });
   } catch (error) {
     next(error);

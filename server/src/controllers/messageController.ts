@@ -29,7 +29,10 @@ const sendMessage = async (
         .json({ errors: parsed.error.flatten().fieldErrors });
     }
 
-    if (userId !== senderId) {
+    // --- FIX: Allow Note-to-Self without checking Friendship rules ---
+    const isNoteToSelf = userId === senderId;
+
+    if (!isNoteToSelf) {
       const receiver = await prisma.user.findUnique({
         where: { id: userId },
       });
@@ -37,22 +40,22 @@ const sendMessage = async (
       if (!receiver) {
         return res.status(404).json({ message: "Receiver not found" });
       }
-    }
 
-    const friendship = await prisma.friendship.findFirst({
-      where: {
-        status: "ACCEPTED",
-        OR: [
-          { userId: senderId, friendId: userId },
-          { userId, friendId: senderId },
-        ],
-      },
-    });
+      const friendship = await prisma.friendship.findFirst({
+        where: {
+          status: "ACCEPTED",
+          OR: [
+            { userId: senderId, friendId: userId },
+            { userId, friendId: senderId },
+          ],
+        },
+      });
 
-    if (!friendship) {
-      return res
-        .status(403)
-        .json({ message: "You can only message your friends" });
+      if (!friendship) {
+        return res
+          .status(403)
+          .json({ message: "You can only message your friends" });
+      }
     }
 
     const message = await prisma.message.create({
@@ -60,7 +63,7 @@ const sendMessage = async (
         content: parsed.data.content,
         senderId,
         receiverId: userId,
-        read: userId === senderId, // Mark as read if sending to self
+        read: isNoteToSelf, // Mark as read instantly if sending to self
       },
       select: {
         id: true,
@@ -99,12 +102,16 @@ const getMessages = async (
       Number(req.query.limit || 20),
     );
 
-    const conversationFilter = {
-      OR: [
-        { senderId: currentUserId, receiverId: userId },
-        { senderId: userId, receiverId: currentUserId },
-      ],
-    };
+    // --- FIX: Logic handles single user ID filter correctly for Notes ---
+    const conversationFilter =
+      userId === currentUserId
+        ? { senderId: currentUserId, receiverId: currentUserId }
+        : {
+            OR: [
+              { senderId: currentUserId, receiverId: userId },
+              { senderId: userId, receiverId: currentUserId },
+            ],
+          };
 
     if (userId !== currentUserId) {
       await prisma.message.updateMany({
@@ -120,7 +127,7 @@ const getMessages = async (
     const [messages, total] = await Promise.all([
       prisma.message.findMany({
         where: conversationFilter,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "desc" }, // Handles paginated sorting limits
         skip,
         take: limit,
         select: {
@@ -132,14 +139,14 @@ const getMessages = async (
           read: true,
         },
       }),
-
       prisma.message.count({
         where: conversationFilter,
       }),
     ]);
 
     return res.status(200).json({
-      data: messages.reverse(),
+      // Backend reverses so older items show up top in chronological order
+      data: [...messages].reverse(),
       total,
       page,
     });
