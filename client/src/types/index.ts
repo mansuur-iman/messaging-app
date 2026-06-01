@@ -23,6 +23,7 @@ export type FriendItem = {
   username: string;
   avatar?: string;
   bio?: string;
+  unreadCount?: number;
 };
 
 export type PendingItem = {

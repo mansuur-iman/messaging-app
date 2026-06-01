@@ -215,7 +215,10 @@ const Sidebar = () => {
                 <ChatInfo>
                   <ChatTop>
                     <UserName>{friend.username}</UserName>
-                    <ChatTime>Chat</ChatTime>
+
+                    {(friend.unreadCount ?? 0) > 0 && (
+                      <UnreadBadge>{friend.unreadCount}</UnreadBadge>
+                    )}
                   </ChatTop>
                   <LastMessage>{friend.bio || "No bio yet"} </LastMessage>
                 </ChatInfo>
@@ -589,6 +592,17 @@ const LeftSection = styled.div`
 
 const UserInfo = styled.div`
   min-width: 0;
+`;
+
+const UnreadBadge = styled.span`
+  background: #e53e3e;
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 99px;
+  min-width: 18px;
+  text-align: center;
 `;
 
 const UserName = styled.p`
