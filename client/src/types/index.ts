@@ -21,7 +21,8 @@ export type Message = {
 export type FriendItem = {
   id: string;
   username: string;
-  avatar?: string | null;
+  avatar?: string;
+  bio?: string;
 };
 
 export type PendingItem = {

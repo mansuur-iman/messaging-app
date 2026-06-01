@@ -23,8 +23,8 @@ const LoginPage = () => {
       const res = await authApi.login(form);
       login(res.user, res.token);
       navigate("/");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }

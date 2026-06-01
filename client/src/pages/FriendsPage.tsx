@@ -1,21 +1,8 @@
 import styled from "styled-components";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { useNavigate } from "react-router-dom";
-
 import { friendsApi } from "../api/friends";
-
-type FriendItem = {
-  id: string;
-  username: string;
-  avatar?: string;
-};
-
-type PendingItem = {
-  id: string;
-  status: string;
-  user: FriendItem;
-};
+import type { FriendItem, PendingItem } from "../types";
 
 const FriendsPage = () => {
   const navigate = useNavigate();

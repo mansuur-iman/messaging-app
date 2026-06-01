@@ -83,10 +83,19 @@ const Sidebar = () => {
   });
 
   // --- Safe Structural Type Coercions ---
-  const friends = (friendsData?.data as FriendItem[]) || [];
-  const users = (usersData?.users as User[]) || [];
-  const pending = (pendingData?.data as PendingItem[]) || [];
-  const sent = (sentData?.data as SentItem[]) || [];
+  const friends = useMemo(
+    () => (friendsData?.data as FriendItem[]) || [],
+    [friendsData],
+  );
+
+  const users = useMemo(() => (usersData?.data as User[]) || [], [usersData]);
+
+  const pending = useMemo(
+    () => (pendingData?.data as PendingItem[]) || [],
+    [pendingData],
+  );
+
+  const sent = useMemo(() => (sentData?.data as SentItem[]) || [], [sentData]);
 
   // --- Optimization: O(1) Lookups instead of inner loop iterations ---
   const lookupMaps = useMemo(() => {
@@ -122,7 +131,7 @@ const Sidebar = () => {
             aria-label="View Profile"
           >
             <Avatar
-              avatar={user?.avatar}
+              avatar={user?.avatar ?? undefined}
               username={user?.username}
               showOnline
             />
@@ -178,7 +187,10 @@ const Sidebar = () => {
               $active={location.pathname === `/messages/${user?.id}`}
               onClick={() => navigate(`/messages/${user?.id}`)}
             >
-              <Avatar avatar={user?.avatar} username={user?.username} />
+              <Avatar
+                avatar={user?.avatar ?? undefined}
+                username={user?.username}
+              />
               <ChatInfo>
                 <ChatTop>
                   <UserName>Notes</UserName>
@@ -196,7 +208,7 @@ const Sidebar = () => {
                 onClick={() => navigate(`/messages/${friend.id}`)}
               >
                 <Avatar
-                  avatar={friend.avatar}
+                  avatar={friend.avatar ?? undefined}
                   username={friend.username}
                   showOnline
                 />
@@ -205,7 +217,7 @@ const Sidebar = () => {
                     <UserName>{friend.username}</UserName>
                     <ChatTime>Chat</ChatTime>
                   </ChatTop>
-                  <LastMessage>Start a conversation</LastMessage>
+                  <LastMessage>{friend.bio || "No bio yet"} </LastMessage>
                 </ChatInfo>
               </ChatCard>
             ))}
@@ -229,7 +241,10 @@ const Sidebar = () => {
               return (
                 <PeopleCard key={u.id}>
                   <LeftSection>
-                    <Avatar avatar={u.avatar} username={u.username} />
+                    <Avatar
+                      avatar={u.avatar ?? undefined}
+                      username={u.username}
+                    />
                     <UserInfo>
                       <UserName>{u.username}</UserName>
                       <UserBio>{u.bio || "No bio yet"}</UserBio>
