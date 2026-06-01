@@ -204,16 +204,27 @@ const getFriendsList = async (
       },
     });
 
-    // normalize output so frontend always gets "friend"
-    const friendsList = friendships.map((f) => {
-      const isUser = f.userId === userId;
+    const friendsList = await Promise.all(
+      friendships.map(async (f) => {
+        const isUser = f.userId === userId;
+        const friendData = isUser ? f.friend : f.user;
 
-      return {
-        id: isUser ? f.friend.id : f.user.id,
-        username: isUser ? f.friend.username : f.user.username,
-        avatar: isUser ? f.friend.avatar : f.user.avatar,
-      };
-    });
+        const unreadCount = await prisma.message.count({
+          where: {
+            senderId: friendData.id,
+            receiverId: userId,
+            read: false,
+          },
+        });
+
+        return {
+          id: friendData.id,
+          username: friendData.username,
+          avatar: friendData.avatar,
+          unreadCount,
+        };
+      }),
+    );
 
     return res.status(200).json({
       data: friendsList,
