@@ -25,6 +25,10 @@ const ChatPage = () => {
 
   const isSelf = userId === user?.id;
 
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ["friends"] });
+  }, [userId]);
+
   // Fetch target user info
   const { data: receiver } = useQuery({
     queryKey: ["user", userId],

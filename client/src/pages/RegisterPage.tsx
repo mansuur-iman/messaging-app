@@ -30,8 +30,8 @@ const RegisterPage = () => {
       const res = await authApi.register(form);
       login(res.user, res.token);
       navigate("/");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
