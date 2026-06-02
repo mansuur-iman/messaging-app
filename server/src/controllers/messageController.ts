@@ -1,7 +1,7 @@
-import { prisma } from "../../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { Request, Response, NextFunction } from "express";
-import { sendMessageSchema } from "../validations/auth";
-import { paginate } from "../services/userService";
+import { sendMessageSchema } from "../validations/auth.js";
+import { paginate } from "../services/userService.js";
 
 type paginationQuery = {
   page?: string;

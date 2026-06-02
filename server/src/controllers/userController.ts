@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { Request, Response, NextFunction } from "express";
 import { updateProfileSchema } from "../validations/auth.js";
 import { paginate } from "../services/userService.js";
