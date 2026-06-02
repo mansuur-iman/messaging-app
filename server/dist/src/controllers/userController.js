@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { updateProfileSchema } from "../validations/auth.js";
 import { paginate } from "../services/userService.js";
 const getUsers = async (req, res, next) => {

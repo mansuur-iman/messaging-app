@@ -51,11 +51,9 @@ const sendFriendRequest = async (
 
       type FriendshipStatus = keyof typeof messages;
 
-      return res
-        .status(400)
-        .json({
-          message: messages[existingFriendship.status as FriendshipStatus],
-        });
+      return res.status(400).json({
+        message: messages[existingFriendship.status as FriendshipStatus],
+      });
     }
 
     const friendship = await prisma.friendship.create({
@@ -210,7 +208,7 @@ const getFriendsList = async (
     });
 
     const friendsList = await Promise.all(
-      friendships.map(async (f) => {
+      friendships.map(async (f: any) => {
         const isUser = f.userId === userId;
         const friendData = isUser ? f.friend : f.user;
 

@@ -1,6 +1,6 @@
-import { prisma } from "../../lib/prisma.js";
-import { sendMessageSchema } from "../validations/auth";
-import { paginate } from "../services/userService";
+import { prisma } from "../lib/prisma.js";
+import { sendMessageSchema } from "../validations/auth.js";
+import { paginate } from "../services/userService.js";
 const sendMessage = async (req, res, next) => {
     try {
         const { userId } = req.params;
