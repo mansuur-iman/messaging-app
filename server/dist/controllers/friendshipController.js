@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 const sendFriendRequest = async (req, res, next) => {
     try {
         const { userId } = req.params;
@@ -36,9 +36,9 @@ const sendFriendRequest = async (req, res, next) => {
                 BLOCKED: "Unable to send friend request",
                 REJECTED: `You have a rejected friend request with ${receiver.username}`,
             };
-            return res
-                .status(400)
-                .json({ message: messages[existingFriendship.status] });
+            return res.status(400).json({
+                message: messages[existingFriendship.status],
+            });
         }
         const friendship = await prisma.friendship.create({
             data: {
