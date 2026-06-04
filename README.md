@@ -71,7 +71,7 @@ A full-stack messaging and social app built with a modern TypeScript monorepo ar
 
 ---
 
-## 🛠 Tech Stack
+##  Tech Stack
 
 ### Backend (`/server`)
 
@@ -111,8 +111,8 @@ A full-stack messaging and social app built with a modern TypeScript monorepo ar
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/chatapp.git
-cd chatapp
+git clone https://github.com/your-username/messaging-app.git
+cd messaging-app
 ```
 
 ### 2. Install dependencies
@@ -213,16 +213,6 @@ All routes are prefixed with `/api`.
 
 ---
 
-## 🗂 App Navigation
-
-```
-/login                 — Login page
-/register              — Sign up page
-/ (protected)
-  ├── Chat tab         — Conversations with friends (and self-notes)
-  └── People tab       — Discover users, send friend requests
-/profile               — Edit bio, profile picture, delete account
-```
 
 ---
 
@@ -236,6 +226,6 @@ All routes are prefixed with `/api`.
 
 ---
 
-## 📄 License
+##  License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
