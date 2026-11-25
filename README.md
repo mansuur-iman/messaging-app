@@ -4,6 +4,9 @@ A full-stack messaging and social app built with a modern TypeScript monorepo ar
 
 ---
 
+## LIVE DEMO
+https://messaging-app-ashen-five.vercel.app/
+
 ##  Project Structure
 
 ```
